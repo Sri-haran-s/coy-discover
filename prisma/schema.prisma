@@ -1,0 +1,95 @@
+// Coy Discover data model.
+//
+// Privacy-critical design: "who liked whom" lives in two separate tables.
+//   - Swipe       : the demo user's own decisions (like / pass).
+//   - ProfileLike : a mock profile's like TOWARD the demo user.
+// Only Match rows are ever shown to the user, and a Match is created only when
+// both directions exist. API code never selects ProfileLike for responses.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// The single logged-in demo user (no authentication in this prototype).
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  photoUrl  String
+  createdAt DateTime @default(now())
+
+  swipes        Swipe[]
+  matches       Match[]
+  incomingLikes ProfileLike[]
+}
+
+/// A discoverable mock profile.
+model Profile {
+  id        String   @id @default(cuid())
+  name      String
+  age       Int
+  photoUrl  String
+  bio       String
+  city      String
+  college   String?
+  /// JSON-encoded string[] (SQLite has no array type).
+  interests String
+  /// "online" | "recent" | "offline" — mock presence indicator.
+  presence  String   @default("offline")
+  /// Stable feed order.
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  swipes     Swipe[]
+  matches    Match[]
+  likesGiven ProfileLike[]
+
+  @@index([position])
+}
+
+/// The demo user's decision on a profile. One decision per (user, profile).
+model Swipe {
+  id        String   @id @default(cuid())
+  userId    String
+  profileId String
+  /// "like" | "pass"
+  action    String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, profileId])
+  @@index([userId])
+}
+
+/// A mock profile's like toward the demo user. PRIVATE: never exposed by the API.
+model ProfileLike {
+  id        String   @id @default(cuid())
+  profileId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, userId])
+}
+
+/// A mutual match. The unique constraint guarantees it is created only once.
+model Match {
+  id        String   @id @default(cuid())
+  userId    String
+  profileId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, profileId])
+  @@index([userId, createdAt])
+}
